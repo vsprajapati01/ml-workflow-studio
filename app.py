@@ -21,6 +21,15 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+def _markdown_table(frame):
+    """Build a Markdown table without needing the optional `tabulate` package."""
+    cols = [str(c) for c in frame.columns]
+    lines = ["| " + " | ".join(cols) + " |", "| " + " | ".join(["---"] * len(cols)) + " |"]
+    for _, row in frame.iterrows():
+        lines.append("| " + " | ".join(str(v) for v in row.tolist()) + " |")
+    return "\n".join(lines)
+
+
 st.set_page_config(page_title="ML Workflow Studio", layout="wide")
 st.title("ML Workflow Studio")
 st.write(
@@ -237,7 +246,7 @@ if "results" in st.session_state:
         *[f"- {line}" for line in clean_log],
         "",
         "## Model comparison",
-        st.session_state["results"].to_markdown(index=False),
+        _markdown_table(st.session_state["results"]),
         "",
         f"Best model: {st.session_state.get('best', 'n/a')}",
     ]
