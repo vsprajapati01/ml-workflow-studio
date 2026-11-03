@@ -1,6 +1,5 @@
 """ML Workflow Studio — reliable end-to-end tabular ML workflow."""
 import hashlib
-import io
 import ipaddress
 import socket
 from urllib.parse import urlparse
@@ -49,9 +48,8 @@ def validate_public_url(raw_url):
     parsed = urlparse(raw_url.strip())
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise ValueError("Enter a complete public http:// or https:// URL.")
-    host = parsed.hostname
     try:
-        addresses = socket.getaddrinfo(host, None)
+        addresses = socket.getaddrinfo(parsed.hostname, None)
         for address in addresses:
             ip = ipaddress.ip_address(address[4][0])
             if not ip.is_global:
@@ -106,8 +104,11 @@ def make_models(regression):
 
 
 def reset_training_state():
-    for key in ("results", "fitted", "features", "target", "is_regression",
-                "work", "best", "clean_log", "report"):
+    for key in (
+        "results", "fitted", "predictions", "features", "target",
+        "is_regression", "work", "best", "clean_log", "report",
+        "test_actual",
+    ):
         st.session_state.pop(key, None)
 
 
@@ -155,7 +156,6 @@ if len(df.columns) < 2:
     st.error("At least two columns are required: one target and one feature.")
     st.stop()
 
-# Avoid ambiguous duplicate column labels and unsupported all-empty columns.
 df.columns = [str(c).strip() for c in df.columns]
 if pd.Index(df.columns).duplicated().any():
     st.error("Your dataset has duplicate column names. Rename them and upload again.")
@@ -270,9 +270,6 @@ if len(target_data) < 5:
     st.stop()
 if not is_regression:
     class_counts = target_data[target].value_counts()
-    if len(class_counts) < 2:
-        st.error("Classification requires at least two target classes.")
-        st.stop()
     if (class_counts < 2).any():
         st.warning(
             "At least one class has only one row. Stratified splitting is not possible; "
@@ -280,13 +277,21 @@ if not is_regression:
         )
 
 test_fraction = st.slider("Test data (%)", min_value=10, max_value=40, value=20, step=5)
+
+# Invalidate previous results whenever any training choice changes.
+training_signature = hashlib.sha256(
+    f"{data_signature}|{clean_option}|{target}|{problem}|{test_fraction}".encode()
+).hexdigest()
+if st.session_state.get("training_signature") != training_signature:
+    reset_training_state()
+    st.session_state["training_signature"] = training_signature
+
 if st.button("Train and compare models", type="primary"):
     reset_training_state()
     X = target_data[features]
     y = target_data[target]
     stratify = None
     if not is_regression and (y.value_counts() >= 2).all():
-        # Stratification also requires enough test and train slots for every class.
         n_test = int(np.ceil(len(y) * test_fraction / 100))
         n_train = len(y) - n_test
         if n_test >= y.nunique() and n_train >= y.nunique():
@@ -318,11 +323,8 @@ if st.button("Train and compare models", type="primary"):
                 rmse = float(np.sqrt(mean_squared_error(y_test, predicted)))
                 score = r2_score(y_test, predicted) if len(y_test) > 1 else np.nan
                 rows.append({
-                    "Model": name,
-                    "MAE": mean_absolute_error(y_test, predicted),
-                    "RMSE": rmse,
-                    "R²": score,
-                    "Status": "Success",
+                    "Model": name, "MAE": mean_absolute_error(y_test, predicted),
+                    "RMSE": rmse, "R²": score, "Status": "Success",
                 })
             else:
                 rows.append({
@@ -349,7 +351,6 @@ if st.button("Train and compare models", type="primary"):
     st.session_state["test_actual"] = y_test
     if successful.empty:
         st.error("None of the models trained successfully. Check the data types and target values.")
-        st.session_state.pop("best", None)
     else:
         metric = "R²" if is_regression else "F1"
         ranked = successful.dropna(subset=[metric])
@@ -378,8 +379,10 @@ if "results" in st.session_state:
         if not st.session_state["is_regression"]:
             actual = st.session_state["test_actual"]
             predicted = st.session_state["predictions"][chosen]
-            labels = sorted(pd.Series(actual).astype(str).unique().tolist())
-            cm = confusion_matrix(actual.astype(str), pd.Series(predicted).astype(str), labels=labels)
+            labels = sorted(set(pd.Series(actual).astype(str)) | set(pd.Series(predicted).astype(str)))
+            cm = confusion_matrix(
+                pd.Series(actual).astype(str), pd.Series(predicted).astype(str), labels=labels
+            )
             st.plotly_chart(
                 px.imshow(cm, x=labels, y=labels, text_auto=True,
                           labels={"x": "Predicted", "y": "Actual", "color": "Count"},
@@ -404,9 +407,8 @@ if "results" in st.session_state:
         "", "## Model comparison", markdown_table(result_frame),
         "", f"Best model: {st.session_state.get('best', 'No successful model')}",
     ]
-    report = "\n".join(report_lines)
     st.download_button(
-        "Download Markdown report", report,
+        "Download Markdown report", "\n".join(report_lines),
         file_name="ml-workflow-report.md", mime="text/markdown",
     )
     st.download_button(
