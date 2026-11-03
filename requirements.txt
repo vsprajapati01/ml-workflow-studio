@@ -3,4 +3,5 @@ pandas
 scikit-learn
 plotly
 openpyxl
+xlrd
 tabulate

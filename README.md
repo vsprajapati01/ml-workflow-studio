@@ -1,41 +1,47 @@
 # ML Workflow Studio
 
-Upload a CSV or Excel file (or paste a link to one) and the app runs a full
-machine-learning workflow, step by step:
+A Streamlit application for exploring tabular data, training baseline machine-learning models, comparing results, and testing predictions.
 
-1. **Upload** — CSV / Excel file, or a direct link to one.
-2. **Clean, or skip cleaning** — if your data is already clean, skip ahead to
-   insights. Otherwise the app removes duplicates, fills missing values
-   (median for numbers, most common value for categories), and caps outliers
-   with a conservative 3x IQR clip, logging every change.
-3. **Insights (EDA)** — summary stats, distributions, correlation heatmap,
-   and missing-value chart.
-4. **Train and compare** — pick a target column. Regression models: Linear
-   Regression, Ridge, Random Forest, Gradient Boosting. Classification
-   models: Logistic Regression, Random Forest, Gradient Boosting. All are
-   trained on the same 80/20 split so the comparison is fair.
-5. **Report** — comparison table with MAE / RMSE / R² (regression) or
-   accuracy / precision / recall / F1 (classification), downloadable as
-   Markdown and CSV.
-6. **Test the best model** — enter feature values one by one and predict,
-   or upload a test file and download predictions for every row.
+## What it does
 
-## Run it locally
+1. **Upload data** — CSV and Excel files, or a direct public file URL.
+2. **Check data quality** — inspect missing values, data types, and duplicate rows; optionally remove duplicates.
+3. **Explore data** — descriptive statistics, distributions, and numeric correlation heatmap.
+4. **Train models** — choose a regression or classification task and compare baseline models.
+5. **Evaluate** — view task-appropriate metrics and a confusion matrix for classification.
+6. **Export** — download model comparison results as CSV and a workflow summary as Markdown.
+7. **Predict** — enter one record or upload a batch file with the required feature columns.
+
+## Models
+
+**Regression:** Linear Regression, Ridge, Random Forest Regressor, Gradient Boosting Regressor.
+
+**Classification:** Logistic Regression, Random Forest Classifier, Gradient Boosting Classifier.
+
+## Run locally
 
 ```bash
+python -m venv .venv
+# Windows: .venv\\Scripts\\activate
+# macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Deploy free
+## Deploy
 
-Push this repo to GitHub, then go to
-[share.streamlit.io](https://share.streamlit.io), pick this repo, set the main
-file to `app.py`, and deploy. No code changes needed.
+Deploy the repository with Streamlit Community Cloud and set the app entry point to `app.py`. Test the deployment with a small, non-sensitive sample dataset before sharing it.
 
-## Notes
+## Data handling and modeling notes
 
-- The app never changes your original file; cleaning happens on a copy.
-- Model quality depends on the data. A high score on synthetic or leaky data
-  does not mean it will work the same on new real data.
-- Start with a small file (a few thousand rows) to check the flow first.
+- The original uploaded file is not modified.
+- Rows with missing target values are excluded from training; target values are not imputed.
+- Numeric and categorical feature imputers are part of the scikit-learn pipeline. They are fitted on training data only, reducing preprocessing leakage into the test set.
+- Classification uses a stratified split when class counts and split sizes allow it; otherwise a regular random split is used with a warning.
+- Unknown categories at prediction time are handled by the one-hot encoder.
+- Model scores are estimates from a held-out split, not guarantees of performance on future data. Small or imbalanced datasets can produce unstable metrics.
+- Public URL ingestion is intended for direct public CSV/Excel files. Do not use private data or untrusted links.
+
+## Current limitations
+
+This is a baseline tabular ML tool, not an AutoML platform. It does not yet provide nested cross-validation, hyperparameter search, model persistence, SHAP explanations, or a production prediction API. Those are possible future improvements.
